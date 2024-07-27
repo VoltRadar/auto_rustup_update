@@ -1,3 +1,5 @@
+use auto_rustup_check;
+
 fn main() {
-    println!("Hello, world!");
+    let result = auto_rustup_check::get_rustup_check();
 }
