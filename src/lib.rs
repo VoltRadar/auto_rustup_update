@@ -1,4 +1,6 @@
-use std::{io, process};
+use std::{collections::HashMap, io, process};
+
+use regex::Regex;
 
 /// Run the rustup command, return a vector of the lines
 ///
@@ -46,9 +48,44 @@ pub fn get_rustup_check() -> Vec<String> {
         .collect();
 }
 
+fn get_new_versions(rustup_check_lines: Vec<&str>) -> HashMap<&str, Option<&str>> {
+    let mut new_versions = HashMap::new();
+
+    let sem_ver_regex = Regex::new(r"[0-9]+\.[0-9]+\.[0-9]+").unwrap();
+
+    for line in rustup_check_lines {
+        // Name of toolchain to update
+        let name = line
+            .split(" - ")
+            .next()
+            .expect("Rustup output is malformed");
+
+        // No update needed
+        if line.contains("Up to date") {
+            new_versions.insert(name, None);
+        }
+        // Updates are needed
+        else if line.contains("Update available") {
+            
+            // Get the last sem ver string ('1.80.1' and the like) from the rustup line
+            let new_version = sem_ver_regex
+                .find_iter(line)
+                .last()
+                .expect("No regex matches")
+                .as_str();
+
+            new_versions.insert(name, Some(new_version));
+        } else {
+            panic!("Rustup line '{line}' is malformed!")
+        }
+    }
+
+    return new_versions;
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::get_rustup_check;
+    use crate::*;
 
     #[test]
     fn pass() {
@@ -62,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn rustup_test() {
+    fn rustup_command_test() {
         let rustup_output = get_rustup_check();
         assert_eq!(rustup_output.len(), 2);
 
@@ -73,7 +110,36 @@ mod tests {
     #[test]
     #[should_panic]
     fn rustup_no_internet() {
-        // Run without internet
         get_rustup_check();
+    }
+
+    #[test]
+    fn rustup_no_update() {
+        let input = vec![
+            "stable-x86_64-unknown-linux-gnu - Up to date : 1.80.0 (051478957 2024-07-21)",
+            "rustup - Up to date : 1.27.1",
+        ];
+
+        let results = get_new_versions(input);
+
+        assert_eq!(results.get("stable-x86_64-unknown-linux-gnu"), Some(&None));
+        assert_eq!(results.get("rustup"), Some(&None));
+    }
+
+    #[test]
+    fn rustup_patch() {
+        let input = vec![
+            "stable-x86_64-unknown-linux-gnu - Update available : 1.80.0 -> 1.80.1 (051478957 2024-07-21)",
+            "rustup - Up to date : 1.27.1",
+        ];
+
+        let results = get_new_versions(input);
+
+        assert_eq!(
+            results.get("stable-x86_64-unknown-linux-gnu"),
+            Some(&Some("1.80.1"))
+        );
+
+        assert_eq!(results.get("rustup"), Some(&None));
     }
 }
