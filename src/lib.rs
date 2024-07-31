@@ -1,4 +1,10 @@
-use std::{collections::HashMap, io, process};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    io,
+    os::unix::process::{CommandExt, ExitStatusExt},
+    process::{self, Command},
+};
 
 use regex::Regex;
 
@@ -48,6 +54,8 @@ pub fn get_rustup_check() -> Vec<String> {
         .collect();
 }
 
+/// Takes the lines from the rustup command and returns the version
+/// strings of any new versions of Rust and Rustup
 fn get_new_versions(rustup_check_lines: Vec<&str>) -> HashMap<&str, Option<&str>> {
     let mut new_versions = HashMap::new();
 
@@ -66,7 +74,6 @@ fn get_new_versions(rustup_check_lines: Vec<&str>) -> HashMap<&str, Option<&str>
         }
         // Updates are needed
         else if line.contains("Update available") {
-            
             // Get the last sem ver string ('1.80.1' and the like) from the rustup line
             let new_version = sem_ver_regex
                 .find_iter(line)
@@ -81,6 +88,80 @@ fn get_new_versions(rustup_check_lines: Vec<&str>) -> HashMap<&str, Option<&str>
     }
 
     return new_versions;
+}
+
+#[derive(PartialEq, Debug)]
+pub enum UpdatePromptAnswer {
+    NoUpdateFound,
+    Update,
+    DoNotUpdate,
+    Timeout,
+}
+
+/// Analyse the output from the new versions, and prompt the user for an update if needed.
+pub fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptAnswer {
+    // Example
+    // zenity --question --title="Rust Update" --no-wrap --text="Rust 1.80.1\nRustup 1.6.0\nUpdate?" --timeout=10 --ok-label="Update" --cancel-label="Not today"
+
+    // Check no new versions were found
+    if new_versions.values().all(|new_ver| new_ver.is_none()) {
+        return UpdatePromptAnswer::NoUpdateFound;
+    }
+
+    let mut args = vec![
+        "--question",
+        "--title=Rust Update",
+        "--no-wrap",
+        "--timeout=10",
+        "--ok-label=Update",
+        "--cancel-label=Not today",
+    ];
+
+    // Create --text paramter containing new program versions
+    let mut text = String::new();
+    
+    for (program, new_version) in new_versions {
+        match new_version {
+            Some(version) => {
+                text.push_str(&format!("{}: {}\n", program, version));
+            },
+            None => {}
+        }
+    }
+
+    // Cut new line character
+    match text.strip_suffix("\n") {
+        Some(stripped_text) => text = stripped_text.to_owned(),
+        None => {}
+    }
+
+    text = format!("--text={}\nUpdate?", text);
+    args.push(&text);
+
+    let prompt_response = process::Command::new("zenity").args(args).spawn();
+
+    if prompt_response.is_err() {
+        let error = prompt_response.err().expect("Checked");
+
+        if error.kind() == io::ErrorKind::NotFound {
+            panic!("Can't run zenity command. Is zenity installed?");
+        } else {
+            panic!("Failed to run zenity command due to {:?}", error);
+        }
+    }
+
+    let prompt_response = prompt_response
+        .ok()
+        .expect("Checked")
+        .wait()
+        .expect("Failed to get zenity output");
+
+    match prompt_response.code() {
+        Some(0) => return UpdatePromptAnswer::Update,
+        Some(1) => return UpdatePromptAnswer::DoNotUpdate,
+        Some(5) => return UpdatePromptAnswer::Timeout,
+        x => panic!("zenity returned with unexpected error: {:?}", x),
+    }
 }
 
 #[cfg(test)]
@@ -141,5 +222,41 @@ mod tests {
         );
 
         assert_eq!(results.get("rustup"), Some(&None));
+    }
+
+    #[test]
+    fn no_prompt() {
+        let mut input: HashMap<&str, Option<&str>> = HashMap::new();
+        input.insert("Rust", None);
+        input.insert("Rustup", None);
+
+        assert_eq!(prompt_for_update(input), UpdatePromptAnswer::NoUpdateFound);
+    }
+
+    #[test]
+    fn prompt_update() {
+        let mut input: HashMap<&str, Option<&str>> = HashMap::new();
+        input.insert("Rust", Some("1.81.0 Update me!"));
+        input.insert("Rustup", Some("1.27.3"));
+
+        assert_eq!(prompt_for_update(input), UpdatePromptAnswer::Update);
+    }
+
+    #[test]
+    fn prompt_do_not_update() {
+        let mut input: HashMap<&str, Option<&str>> = HashMap::new();
+        input.insert("Rust", Some("2.0.0 Don't update me please!!"));
+        input.insert("Rustup", None);
+
+        assert_eq!(prompt_for_update(input), UpdatePromptAnswer::DoNotUpdate);
+    }
+
+    #[test]
+    fn timeout_prompt() {
+        let mut input: HashMap<&str, Option<&str>> = HashMap::new();
+        input.insert("Rust", Some("2.0.0 Timeout!!!"));
+        input.insert("Rustup", Some("Please don't press a button"));
+
+        assert_eq!(prompt_for_update(input), UpdatePromptAnswer::Timeout);
     }
 }
