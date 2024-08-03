@@ -1,14 +1,103 @@
-use std::{
-    collections::HashMap,
-    hash::Hash,
-    io,
-    os::unix::process::{CommandExt, ExitStatusExt},
-    process::{self, Command},
-};
+use std::{collections::HashMap, env, fs, io, os::linux::fs::MetadataExt, path, process, time};
 
 use regex::Regex;
 
-/// Run the rustup command, return a vector of the lines
+// Path relative to the home path of no-update flag
+const RUSTUP_FLAG_PATH: &str = ".rustup/donotupdate";
+
+// Time taken between writing the no-update flag and
+const NO_UPDATE_FLAG_DELAY: u64 = 60 * 60 * 24;
+
+// Gets the path to the flag used to set if it should update
+fn get_flag_filepath() -> path::PathBuf {
+    let mut path = path::PathBuf::new();
+    path.push(env::var("HOME").expect("HOME env variable not set!"));
+    path.push(RUSTUP_FLAG_PATH);
+
+    return path;
+}
+
+fn read_no_update_flag() -> Option<i64> {
+    let path = get_flag_filepath();
+
+    match fs::File::open(path) {
+        io::Result::Err(error) => {
+            if error.kind() == io::ErrorKind::NotFound {
+                return None;
+            }
+        }
+
+        io::Result::Ok(file) => return Some(file.metadata().unwrap().st_mtime()),
+    }
+
+    return None;
+}
+
+/// Sets the no update flag
+/// 
+/// If the argument is true, then set the creation time of the no update
+/// flag is updated, or the flag is created
+/// 
+/// Else, then the flag is deleted
+/// 
+/// Program doesn't prompt for update if the no-update flag is set less
+/// then a day ago
+fn set_no_update_flag(write_new_flag: bool) -> io::Result<()> {
+
+    let path = get_flag_filepath();
+    
+    // Delete the flag
+    let result = fs::remove_file(&path);
+    if result.is_err() {
+        let err = result.err().unwrap();
+        match err.kind() {
+            io::ErrorKind::NotFound => {},
+            _ => {return io::Result::Err(err)}
+        }
+    }
+
+    if write_new_flag {
+        fs::File::create(&path)?;
+    }
+
+    return io::Result::Ok(());
+}
+
+/// Returns if the program should prompt the user for an update
+///
+/// Checks the reboot flag, and returns true if the flag doesn't exist, or
+/// is older than 1 day
+fn should_prompt() -> bool {
+
+    match read_no_update_flag() {
+        None => return true,
+        Some(write_time) => {
+            // Write time was before 1970, which probably means we should update?
+            if write_time < 0 {
+                return true;
+            }
+
+            let now = time::SystemTime::now()
+                .duration_since(time::UNIX_EPOCH)
+                .expect("Couldn't compare now to unix epoch")
+                .as_secs();
+            let diff = now.checked_sub(write_time as u64);
+
+            dbg!(&diff);
+
+            if diff.is_none() {
+                // Creation time of the flag is in the apparent future... should update
+                return true;
+            }
+
+            let diff = diff.expect("Checked");
+
+            return NO_UPDATE_FLAG_DELAY < diff;
+        }
+    }
+}
+
+/// Run the rustup check command, return a vector of the lines
 ///
 /// Panics on the fail of the command
 pub fn get_rustup_check() -> Vec<String> {
@@ -100,8 +189,11 @@ pub enum UpdatePromptAnswer {
 
 /// Analyse the output from the new versions, and prompt the user for an update if needed.
 pub fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptAnswer {
-    // Example
-    // zenity --question --title="Rust Update" --no-wrap --text="Rust 1.80.1\nRustup 1.6.0\nUpdate?" --timeout=10 --ok-label="Update" --cancel-label="Not today"
+    // Example:
+
+    // zenity --question --title="Rust Update" --no-wrap
+    // --text="Rust 1.80.1\nRustup 1.6.0\nUpdate?" --timeout=10 --ok-label="Update"
+    // --cancel-label="Not today"
 
     // Check no new versions were found
     if new_versions.values().all(|new_ver| new_ver.is_none()) {
@@ -117,14 +209,14 @@ pub fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePro
         "--cancel-label=Not today",
     ];
 
-    // Create --text paramter containing new program versions
+    // Create --text parameter containing new program versions
     let mut text = String::new();
-    
+
     for (program, new_version) in new_versions {
         match new_version {
             Some(version) => {
                 text.push_str(&format!("{}: {}\n", program, version));
-            },
+            }
             None => {}
         }
     }
@@ -233,6 +325,7 @@ mod tests {
         assert_eq!(prompt_for_update(input), UpdatePromptAnswer::NoUpdateFound);
     }
 
+    #[ignore = "Makes prompt, is annoying"]
     #[test]
     fn prompt_update() {
         let mut input: HashMap<&str, Option<&str>> = HashMap::new();
@@ -242,6 +335,7 @@ mod tests {
         assert_eq!(prompt_for_update(input), UpdatePromptAnswer::Update);
     }
 
+    #[ignore = "Makes prompt, is annoying"]
     #[test]
     fn prompt_do_not_update() {
         let mut input: HashMap<&str, Option<&str>> = HashMap::new();
@@ -251,6 +345,7 @@ mod tests {
         assert_eq!(prompt_for_update(input), UpdatePromptAnswer::DoNotUpdate);
     }
 
+    #[ignore = "Makes prompt, is annoying"]
     #[test]
     fn timeout_prompt() {
         let mut input: HashMap<&str, Option<&str>> = HashMap::new();
@@ -258,5 +353,37 @@ mod tests {
         input.insert("Rustup", Some("Please don't press a button"));
 
         assert_eq!(prompt_for_update(input), UpdatePromptAnswer::Timeout);
+    }
+
+    #[test]
+    fn should_prompt_test() {
+        // Based on a flag in the filesystem. Can't be run in parrael with other tests if they modify the 
+
+        println!("No flag");
+        set_no_update_flag(false).unwrap();
+        assert_eq!(should_prompt(), true);
+
+        println!("New flag");
+        set_no_update_flag(true).unwrap();
+        assert_eq!(should_prompt(), false);
+
+        println!("Second new flag");
+        set_no_update_flag(true).unwrap();
+        assert_eq!(should_prompt(), false);
+
+        println!("Second no flag");
+        set_no_update_flag(false).unwrap();
+        assert_eq!(should_prompt(), true);
+
+        println!("All passed");
+
+    }
+
+    #[ignore = "Depends on the file system"]
+    #[test]
+    fn should_prompt_after_day() {
+        
+        // Touch the file so it was modified a day ago
+        assert_eq!(should_prompt(), true);
     }
 }

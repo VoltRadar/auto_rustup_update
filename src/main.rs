@@ -30,10 +30,7 @@ fn prompt_experiment() {
 }
 
 fn spawner_test() {
-    let mut args = vec![
-        "--question",
-        "--timeout=10"
-    ];
+    let mut args = vec!["--question", "--timeout=10"];
 
     let mut handle = process::Command::new("zenity").args(args).spawn().unwrap();
 
