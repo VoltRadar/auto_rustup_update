@@ -1,0 +1,9 @@
+[Unit]
+Description=Run rustup update every hour
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1hour
+
+[Install]
+WantedBy=timers.target
