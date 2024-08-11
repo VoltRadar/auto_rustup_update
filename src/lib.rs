@@ -106,11 +106,13 @@ fn should_prompt() -> bool {
 ///
 /// Panics on the fail of the command
 fn get_rustup_check() -> Vec<String> {
-
-    let mut rustup_path = path::PathBuf::from(env::var("HOME").expect("Home env variable not set!"));
+    let mut rustup_path =
+        path::PathBuf::from(env::var("HOME").expect("Home env variable not set!"));
     rustup_path.push(RUSTUP_BIN_PATH);
 
-    let output = process::Command::new(get_rustup_filepath()).arg("check").output();
+    let output = process::Command::new(get_rustup_filepath())
+        .arg("check")
+        .output();
 
     if output.is_err() {
         eprintln!("Failed to run rustup!");
@@ -154,7 +156,7 @@ fn get_rustup_check() -> Vec<String> {
 
 /// Takes the lines from the rustup command and returns the version
 /// strings of any new versions of Rust and Rustup
-pub fn get_new_versions(rustup_check_lines: Vec<&str>) -> HashMap<&str, Option<&str>> {
+fn get_new_versions(rustup_check_lines: Vec<&str>) -> HashMap<&str, Option<&str>> {
     let mut new_versions = HashMap::new();
 
     let sem_ver_regex = Regex::new(r"[0-9]+\.[0-9]+\.[0-9]+").unwrap();
@@ -189,7 +191,7 @@ pub fn get_new_versions(rustup_check_lines: Vec<&str>) -> HashMap<&str, Option<&
 }
 
 #[derive(PartialEq, Debug)]
-pub enum UpdatePromptAnswer {
+enum UpdatePromptAnswer {
     NoUpdateFound,
     Update,
     DoNotUpdate,
@@ -197,7 +199,7 @@ pub enum UpdatePromptAnswer {
 }
 
 /// Analyse the output from the new versions, and prompt the user for an update if needed.
-pub fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptAnswer {
+fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptAnswer {
     // Example:
 
     // zenity --question --title="Rust Update" --no-wrap
@@ -265,7 +267,7 @@ pub fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePro
     }
 }
 
-pub fn run_update() -> bool {
+fn run_update() -> bool {
     let args = [
         "--",
         "/bin/sh",
@@ -292,7 +294,7 @@ pub fn run_update() -> bool {
 /// Panics if no internet connection
 ///
 /// Panics if couldn't find the `rustup` or `zenity` command
-/// 
+///
 /// Panics if rustup update doesn't work successfully
 pub fn auto_update() -> io::Result<()> {
     let rustup_lines = get_rustup_check();
@@ -300,7 +302,6 @@ pub fn auto_update() -> io::Result<()> {
 
     // No new versions
     if new_versions.values().all(|x| x.is_none()) {
-        
         // Remove do not update flag
         set_no_update_flag(false)?;
 
@@ -469,6 +470,3 @@ mod tests {
         assert!(run_update())
     }
 }
-
-// TODO Change rustup to absolute path (in ~/.cargo)
-// TODO Make system file for it

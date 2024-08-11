@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "auto_rustup_check"
+name = "auto_rustup_update"
 version = "0.2.0"
 dependencies = [
  "regex",

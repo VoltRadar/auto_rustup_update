@@ -4,7 +4,4 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/daisy/code/auto_rustup_check/target/release/auto_rustup_check
-
-[Install]
-WantedBy=multi-user.target
+ExecStart=/home/daisy/code/auto_rustup_update/target/release/auto_rustup_update
