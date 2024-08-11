@@ -19,7 +19,7 @@ If you don't have `cargo` or `rustup` installed, go
 [here](https://www.rust-lang.org/tools/install). These tools are used to
 complie the program and update it respectivly.
 
-The (Ubuntu)[https://ubuntu.com/download] requirement is due to this
+The [Ubuntu](https://ubuntu.com/download) requirement is due to this
 programs use of programs installed on Ubuntu which are `systemd`,
 `zenity`, and `gnome-terminal`. zenity is used for prompting the user, and
 gnome-terminal is used to display a terminal window to display update
@@ -34,7 +34,7 @@ manual tweaks.
 1. Clone this repo using the command below:
 
 ```
-INSERT COMMAND PLEASE
+git clone git@github.com:VoltRadar/auto_rustup_update.git
 ```
 
 2. Navigate into the cloned repository and compile the project using
