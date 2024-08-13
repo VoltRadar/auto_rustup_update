@@ -1,4 +1,6 @@
-use auto_rustup_update;
+// Clippy configurations
+#![allow(clippy::needless_return)]
+
 use std::io;
 
 fn main() -> io::Result<()> {

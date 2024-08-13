@@ -1,3 +1,6 @@
+// Clippy configurations
+#![allow(clippy::needless_return)]
+
 use std::{collections::HashMap, env, fs, io, os::linux::fs::MetadataExt, path, process, time};
 
 use regex::Regex;
@@ -117,13 +120,10 @@ fn get_rustup_check() -> Vec<String> {
     if output.is_err() {
         eprintln!("Failed to run rustup!");
 
-        let err = output.err().expect("Checked if error");
+        let err = output.expect_err("Checked if error");
 
-        match err.kind() {
-            io::ErrorKind::NotFound => {
-                panic!("Can't find rustup command. Who is this running as?\n")
-            }
-            _ => {}
+        if err.kind() == io::ErrorKind::NotFound {
+            panic!("Can't find rustup command. Who is this running as?\n")
         }
 
         panic!("{:?}", err);
@@ -149,7 +149,7 @@ fn get_rustup_check() -> Vec<String> {
     // collect them into a vector
     return stdout
         .split('\n')
-        .filter(|x| x.len() > 0)
+        .filter(|x| !x.is_empty())
         .map(|x| x.to_string())
         .collect();
 }
@@ -224,18 +224,14 @@ fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptA
     let mut text = String::new();
 
     for (program, new_version) in new_versions {
-        match new_version {
-            Some(version) => {
-                text.push_str(&format!("{}: {}\n", program, version));
-            }
-            None => {}
+        if let Some(version) = new_version {
+            text.push_str(&format!("{}: {}\n", program, version));
         }
     }
 
     // Cut new line character
-    match text.strip_suffix("\n") {
-        Some(stripped_text) => text = stripped_text.to_owned(),
-        None => {}
+    if let Some(stripped_text) = text.strip_suffix("\n") {
+        text = stripped_text.to_owned();
     }
 
     text = format!("--text={}\nUpdate?", text);
@@ -244,7 +240,7 @@ fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptA
     let prompt_response = process::Command::new("zenity").args(args).spawn();
 
     if prompt_response.is_err() {
-        let error = prompt_response.err().expect("Checked");
+        let error = prompt_response.expect_err("Checked");
 
         if error.kind() == io::ErrorKind::NotFound {
             panic!("Can't run zenity command. Is zenity installed?");
@@ -254,7 +250,6 @@ fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptA
     }
 
     let prompt_response = prompt_response
-        .ok()
         .expect("Checked")
         .wait()
         .expect("Failed to get zenity output");
@@ -436,7 +431,7 @@ mod tests {
 
     #[test]
     fn should_prompt_test() {
-        // Based on a flag in the filesystem. Can't be run in parrael with other tests if they modify the
+        // Based on a flag in the filesystem. Can't be run in parallel with other tests if they modify the
 
         println!("No flag");
         set_no_update_flag(false).unwrap();
