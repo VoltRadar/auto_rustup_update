@@ -139,6 +139,9 @@ fn get_rustup_check() -> Vec<String> {
         if stderr.contains("could not download file") {
             panic!("Failed to download file. Check internet connection");
         } else {
+            eprintln!("Rustup stderr:");
+            eprintln!("{}", stderr);
+            eprintln!("---------");
             panic!("Unknown error in rustup command!");
         }
     }
@@ -215,7 +218,7 @@ fn prompt_for_update(new_versions: HashMap<&str, Option<&str>>) -> UpdatePromptA
         "--question",
         "--title=Rust Update",
         "--no-wrap",
-        "--timeout=10",
+        "--timeout=60",
         "--ok-label=Update",
         "--cancel-label=Not today",
     ];
